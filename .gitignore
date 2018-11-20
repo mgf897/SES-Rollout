@@ -1,0 +1,8 @@
+
+# Text editor swapfiles
+*.swp
+*~
+
+# Python artifacts
+*__pycache__*
+*.pyc
