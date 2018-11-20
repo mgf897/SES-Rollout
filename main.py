@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 SES Rollout
 """
@@ -6,6 +8,7 @@ __author__ = "mgf897, ssfivy"
 __version__ = "0.1.0"
 __license__ = "CC SA"
 
+import sys
 import os
 import time
 from selenium.webdriver import Firefox
@@ -16,6 +19,10 @@ baseURL = "https://trainbeacon.ses.nsw.gov.au"
 loginURL = "https://identitytrain.ses.nsw.gov.au/core/login"
 jobsURL = baseURL + "/Jobs"
 delay = 10
+
+# version number check: Require 3.6
+if sys.version_info < (3, 6) :
+    raise NotImplementedError('This script requires Python version 3.6 or later')
 
 def annouceJob(job):
     print(job)
