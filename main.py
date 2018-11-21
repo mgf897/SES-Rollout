@@ -9,6 +9,7 @@ __version__ = "0.1.0"
 __license__ = "CC SA"
 
 import argparse
+import subprocess
 import sys
 import os
 import time
@@ -28,8 +29,35 @@ jobs_refresh_delay = 10
 if sys.version_info < (3, 6) :
     raise NotImplementedError('This script requires Python version 3.6 or later')
 
+def sayText(sentence):
+    # Festival tts engine is written partly with Scheme so its syntax is a bit exotic
+    cmd = ['festival', '-b', '(voice_cmu_us_slt_arctic_hts)',  f'(SayText "{sentence}")']
+    subprocess.run(cmd)
+
 def annouceJob(job):
     print(job)
+    # Generate sentence to speak
+    words = []
+    words.append('There is an incident requiring ')
+    words.append(job['priority'])
+    words.append(' response! ')
+
+    words.append(' It is a ')
+    words.append(job['type'])
+    words.append(' !')
+
+    words.append(' Location is ')
+    words.append(job['address'])
+    words.append(' !')
+
+
+    # Say it!
+    announcement = ' '.join(words)
+    print(announcement)
+    sayText(announcement)
+    sayText("I repeat,")
+    sayText(announcement)
+    #sayText('S E S, Rollout!')
 
 def monitor_jobs_api(isLiveSite=False):
     '''Connect to API and monitor for new jobs'''
@@ -39,8 +67,8 @@ def monitor_jobs_selenium(isLiveSite=False, isHeadless=False):
     '''Connect to web interface and parse jobs manually using Selenium'''
 
     # get credentials from system variables
-    ses_login = os.environ.get("SES_LOGIN")
-    ses_pass = os.environ.get("SES_PASS")
+    ses_login = os.environ.get("SES_LOGIN") or ''
+    ses_pass = os.environ.get("SES_PASS") or ''
 
     if len(ses_login) < 1 or len(ses_pass) < 1:
         raise RuntimeError("No login credentials set. Set SES_LOGIN and SES_PASS environment variables")
@@ -143,6 +171,10 @@ if __name__ == "__main__":
         livesite = True
     if args.training:
         livesite = False
+
+    # allows the operator to verify the speaker is working
+    print('Saying speaker test...')
+    sayText('This is the S E S Rollout speaker test message!')
 
     try:
         monitor_jobs_api(livesite)
