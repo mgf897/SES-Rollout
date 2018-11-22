@@ -17,12 +17,17 @@ from selenium.webdriver import Firefox
 from selenium.webdriver.firefox.options import Options
 from bs4 import BeautifulSoup
 
+if sys.platform.startswith('win32'):
+    import win32com.client
+
 trainingURL = "https://trainbeacon.ses.nsw.gov.au"
 trainingURL_login = "https://identitytrain.ses.nsw.gov.au/core/login"
 
 liveURL = "" # TODO: Fill this infromation
 liveURL_login = "" # TODO: Fill this information
 
+initial_wait = 10
+jobs_recent_enough = 30
 jobs_refresh_delay = 10
 
 # version number check: Require 3.6
@@ -30,11 +35,17 @@ if sys.version_info < (3, 6) :
     raise NotImplementedError('This script requires Python version 3.6 or later')
 
 def sayText(sentence):
-    # Festival tts engine is written partly with Scheme so its syntax is a bit exotic
-    cmd = ['festival', '-b', '(voice_cmu_us_slt_arctic_hts)',  f'(SayText "{sentence}")']
-    subprocess.run(cmd)
+    if sys.platform.startswith('linux'):
+        # Festival tts engine is written partly with Scheme so its syntax is a bit exotic
+        cmd = ['festival', '-b', '(voice_cmu_us_slt_arctic_hts)',  f'(SayText "{sentence}")']
+        subprocess.run(cmd)
+    elif sys.platform.startswith('win32'):
+        # Completely untested, might neex extra dependencies. Please update READMe when you got this working.
+        speaker = win32com.client.Dispatch("SAPI.SpVoice")
+        speaker.Speak(sentence)
 
-def annouceJob(job):
+
+def announceJob(job):
     print(job)
     # Generate sentence to speak
     words = []
@@ -54,6 +65,7 @@ def annouceJob(job):
     # Say it!
     announcement = ' '.join(words)
     print(announcement)
+    # Repeat announcement twice so they can be heard a bit clearly
     sayText(announcement)
     sayText("I repeat,")
     sayText(announcement)
@@ -62,6 +74,33 @@ def annouceJob(job):
 def monitor_jobs_api(isLiveSite=False):
     '''Connect to API and monitor for new jobs'''
     raise NotImplementedError('No API access information available for now')
+
+def parse_jobs_table(browser):
+    '''Parse the job register table and return a dict of jobs, with jobid as id'''
+    JobRegisterTable = browser.find_element_by_id("jobRegisterTable")
+    # TODO
+    # handle exception if table isnt loaded yet
+
+    jobTable = BeautifulSoup(browser.page_source, "html.parser")
+    jobRows = jobTable.find("table", id="jobRegisterTable").find("tbody").find_all("tr")
+
+    jobs = {}
+    for row in jobRows:
+        cells = row.find_all("td")
+        # Every second table row is 1 column wide and needs to be ignored
+        if (len(cells) > 1):
+            job = dict()
+            job["id"] = cells[2].getText()
+            job["received"] = cells[3].getText()
+            job["priority"] = cells[4].getText()
+            job["type"] = cells[5].getText()
+            job["status"] = cells[6].getText()
+            job["hq"] = cells[7].getText()
+            job["parent"] = cells[8].getText()
+            job["address"] = cells[9].getText()
+            jobs[job["id"]] = job
+
+    return jobs
 
 def monitor_jobs_selenium(isLiveSite=False, isHeadless=False):
     '''Connect to web interface and parse jobs manually using Selenium'''
@@ -105,47 +144,34 @@ def monitor_jobs_selenium(isLiveSite=False, isHeadless=False):
     # TODO
     # Browser should redirect to jobs page. Make sure we are on the Jobs page. If not, request it
 
-    jobRegisterTable = object()
-    knownJobIds = list()
+    # Try to get the initial list of jobs. We don't announce these.
+    print(f"waiting for {initial_wait} seconds to allow website to load")
+    time.sleep(initial_wait)
 
+    known_jobs = {}
+    # Comment out the parse function below to make us announce all initial jobs (for testing)
+    # Else, this will get an initial list of jobs which will not be announced
+    known_jobs = parse_jobs_table(browser)
+
+    # Check for further additional jobs
     while True:
         print(f"waiting {jobs_refresh_delay} seconds")
         time.sleep(jobs_refresh_delay)
 
-        newJobRegisterTable = browser.find_element_by_id("jobRegisterTable")
+        # Hopefully the web page does not keep appending the jobs in the web page
+        # so updated_job will not grow indefinitely
+        updated_jobs = parse_jobs_table(browser)
 
-        # TODO
-        # handle exception if table isnt loaded yet
+        # Get new jobs by finding the diff between two sets, see https://stackoverflow.com/a/30986796
+        new_job_ids = set(updated_jobs.keys()) - set(known_jobs.keys())
 
-        # Quickly compare raw tables before parsing
-        if (jobRegisterTable != newJobRegisterTable):
-            print("Update to job table")
-            jobRegisterTable = newJobRegisterTable
+        # We don't need the old jobs anymore, replace with collection of new jobs
+        known_jobs = updated_jobs
 
-            jobTable = BeautifulSoup(browser.page_source, "html.parser")
-            jobRows = jobTable.find("table", id="jobRegisterTable").find("tbody").find_all("tr")
-            for jobRow in jobRows:
-                cells = jobRow.find_all("td")
-                # Every second table row is 1 column wide and needs to be ignored
-                if (len(cells) > 1):
-                    job = dict()
+        # Announce all new jobs
+        for job in new_job_ids:
+            announceJob(known_jobs[job])
 
-                    job["id"] = cells[2].getText()
-                    job["received"] = cells[3].getText()
-                    job["priority"] = cells[4].getText()
-                    job["type"] = cells[5].getText()
-                    job["status"] = cells[6].getText()
-                    job["hq"] = cells[7].getText()
-                    job["parent"] = cells[8].getText()
-                    job["address"] = cells[9].getText()
-
-                    if job["id"] not in knownJobIds:
-                        # New job
-                        knownJobIds.append(job["id"])
-                        annouceJob(job)
-
-        else:
-            print("No new jobs")
 
 def parseinput():
     helptext = 'Script that parses SES alerts site and announces it through the station'
@@ -176,9 +202,7 @@ if __name__ == "__main__":
     print('Saying speaker test...')
     sayText('This is the S E S Rollout speaker test message!')
 
-    try:
-        monitor_jobs_api(livesite)
-    except:
-        monitor_jobs_selenium(livesite, args.headless)
+    #monitor_jobs_api(livesite)
+    monitor_jobs_selenium(livesite, args.headless)
 
 
