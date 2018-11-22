@@ -6,3 +6,6 @@
 # Python artifacts
 *__pycache__*
 *.pyc
+
+# Geckodriver log
+geckodriver.log
