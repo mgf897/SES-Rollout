@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 """
 SES Rollout
@@ -12,7 +11,10 @@ import argparse
 import subprocess
 import sys
 import os
+import sys
 import time
+import glob
+import serial.tools.list_ports
 from selenium.webdriver import Firefox
 from selenium.webdriver.firefox.options import Options
 from bs4 import BeautifulSoup
@@ -34,6 +36,15 @@ jobs_refresh_delay = 10
 if sys.version_info < (3, 6) :
     raise NotImplementedError('This script requires Python version 3.6 or later')
 
+def list_ports():
+    ports = serial.tools.list_ports.comports()
+	
+    print("Available comm ports")
+    for port, desc, hwid in sorted(ports):
+        print(f"{port}: {desc} [{hwid}]") 
+
+    return(ports)
+    
 def sayText(sentence):
     if sys.platform.startswith('linux'):
         # Festival tts engine is written partly with Scheme so its syntax is a bit exotic
@@ -77,6 +88,8 @@ def monitor_jobs_api(isLiveSite=False):
 
 def parse_jobs_table(browser):
     '''Parse the job register table and return a dict of jobs, with jobid as id'''
+    # Refresh page required to ensure table is up to date
+    browser.refresh()
     JobRegisterTable = browser.find_element_by_id("jobRegisterTable")
     # TODO
     # handle exception if table isnt loaded yet
@@ -127,8 +140,7 @@ def monitor_jobs_selenium(isLiveSite=False, isHeadless=False):
 
     browser = Firefox(options=opts)
     browser.get(baseurl + "/Jobs")
-    page_url = browser.current_url
-
+    
     if (browser.current_url.split("?")[0] == loginurl):
         # Login
         user_form = browser.find_element_by_id('username')
@@ -137,13 +149,14 @@ def monitor_jobs_selenium(isLiveSite=False, isHeadless=False):
         pass_form.send_keys(ses_pass)
         pass_form.submit()
 
-    else:
-        # Aready logged in
-        pass
-
-    # TODO
-    # Browser should redirect to jobs page. Make sure we are on the Jobs page. If not, request it
-
+        
+    # Check if login was successful
+    # Are we still on the login screen?
+    print(f"waiting {jobs_refresh_delay} seconds before checking login state")
+    time.sleep(jobs_refresh_delay)
+    if (browser.current_url.split("?")[0] == loginurl): 
+         raise RuntimeError("Login error. Check username/password")
+        
     # Try to get the initial list of jobs. We don't announce these.
     print(f"waiting for {initial_wait} seconds to allow website to load")
     time.sleep(initial_wait)
@@ -200,8 +213,11 @@ if __name__ == "__main__":
 
     # allows the operator to verify the speaker is working
     print('Saying speaker test...')
-    sayText('This is the S E S Rollout speaker test message!')
+    #sayText('This is the S E S Rollout speaker test message!')
 
+    # List available serial ports
+    list_ports()
+    
     #monitor_jobs_api(livesite)
     monitor_jobs_selenium(livesite, args.headless)
 
